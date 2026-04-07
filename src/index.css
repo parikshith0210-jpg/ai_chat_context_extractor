@@ -77,7 +77,8 @@ a, button {
   transition: color 180ms cubic-bezier(0.16, 1, 0.3, 1),
               background 180ms cubic-bezier(0.16, 1, 0.3, 1),
               border-color 180ms cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1);
+              box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1),
+              transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Custom scrollbar */
@@ -116,10 +117,18 @@ a, button {
 .btn-primary {
   background: var(--color-primary);
   color: #fff;
+  box-shadow: 0 1px 0 oklch(0 0 0 / 0.25);
 }
 
 .btn-primary:hover:not(:disabled) {
   background: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px oklch(0 0 0 / 0.22);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px oklch(0 0 0 / 0.2);
 }
 
 .btn-ghost {
@@ -130,6 +139,15 @@ a, button {
 .btn-ghost:hover:not(:disabled) {
   background: var(--color-surface-offset);
   color: var(--color-text);
+  transform: translateY(-1px);
+}
+
+.btn-ghost:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.card-surface {
+  box-shadow: var(--shadow-md);
 }
 
 /* Focus styles */
