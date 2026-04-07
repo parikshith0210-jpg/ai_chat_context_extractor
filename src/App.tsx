@@ -3,6 +3,7 @@ import { useTheme } from './hooks/useTheme';
 import { useToast } from './hooks/useToast';
 import { ExtractionOptions, OutputFormat, AIModel, Stats } from './types';
 import { parseTurns, extractTopics, buildOutput, extractFromJSON, getUsageGuide } from './utils/extractor';
+import { cn } from './utils/cn';
 import {
   LogoIcon,
   SunIcon,
@@ -21,10 +22,11 @@ const Card: React.FC<{ title: string; children: React.ReactNode; className?: str
   className = '',
 }) => (
   <div
-    className={`rounded-xl p-6 mb-6 ${className}`}
+    className={cn('rounded-xl p-6 mb-6 card-surface', className)}
     style={{
       background: 'var(--color-surface)',
       border: '1px solid var(--color-border)',
+      boxShadow: 'var(--shadow-md)',
     }}
   >
     <div
@@ -46,7 +48,10 @@ const BtnPrimary: React.FC<{
   <button
     onClick={onClick}
     disabled={disabled}
-    className={`inline-flex items-center gap-2 px-5 py-3 rounded-md font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
+    className={cn(
+      'inline-flex items-center gap-2 px-5 py-3 rounded-md font-semibold btn-primary disabled:opacity-40 disabled:cursor-not-allowed',
+      className
+    )}
     style={{
       background: 'var(--color-primary)',
       color: '#fff',
@@ -65,9 +70,9 @@ const BtnGhost: React.FC<{
   <button
     onClick={onClick}
     disabled={disabled}
-    className={`inline-flex items-center gap-2 rounded-md font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+    className={cn(`inline-flex items-center gap-2 rounded-md font-semibold btn-ghost disabled:opacity-40 disabled:cursor-not-allowed ${
       size === 'sm' ? 'px-3 py-1.5 text-xs' : 'px-4 py-2 text-sm'
-    }`}
+    }`)}
     style={{
       color: 'var(--color-text-muted)',
       border: '1px solid var(--color-border)',
@@ -78,6 +83,7 @@ const BtnGhost: React.FC<{
 );
 
 export default function App() {
+  const MAX_INPUT_CHARS = 300_000;
   const { theme, toggleTheme } = useTheme();
   const { toasts, showToast } = useToast();
 
@@ -177,45 +183,59 @@ export default function App() {
       showToast('Paste a conversation first', 'error');
       return;
     }
+    if (raw.length > MAX_INPUT_CHARS) {
+      showToast(`Input too large (${raw.length.toLocaleString()} chars). Please trim to under ${MAX_INPUT_CHARS.toLocaleString()} chars.`, 'error');
+      return;
+    }
 
     setIsProcessing(true);
     setShowOutput(false);
+    setProgress(0);
+    setProgressLabel('Starting…');
 
-    const steps: [number, string][] = [
-      [20, 'Parsing conversation turns…'],
-      [45, 'Extracting topics and decisions…'],
-      [70, 'Summarizing earlier context…'],
-      [90, 'Compressing for target model…'],
-      [100, 'Done!'],
-    ];
+    try {
+      const steps: [number, string][] = [
+        [20, 'Parsing conversation turns…'],
+        [45, 'Extracting topics and decisions…'],
+        [70, 'Summarizing earlier context…'],
+        [90, 'Compressing for target model…'],
+      ];
 
-    for (const [p, label] of steps) {
-      setProgress(p);
-      setProgressLabel(label);
-      await new Promise((r) => setTimeout(r, 320));
+      for (const [p, label] of steps) {
+        setProgress(p);
+        setProgressLabel(label);
+        await new Promise((r) => setTimeout(r, 240));
+      }
+
+      await new Promise((r) => setTimeout(r, 0));
+      const turns = parseTurns(raw);
+      const outputText = buildOutput(turns, options, outputFormat, selectedModel, recentTurnsCount);
+      const topics = extractTopics(turns);
+
+      const ratio = ((1 - outputText.length / raw.length) * 100).toFixed(0);
+
+      setOutput(outputText);
+      setStats({
+        originalChars: raw.length,
+        compressedChars: outputText.length,
+        compressionRatio: ratio > '0' ? `${ratio}% smaller` : `${Math.abs(parseFloat(ratio))}% larger`,
+        turns: turns.length,
+        topics: topics.length,
+      });
+      setProgress(100);
+      setProgressLabel('Done!');
+      setShowOutput(true);
+
+      setTimeout(() => {
+        document.getElementById('output-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    } catch (error) {
+      console.error('Extraction failed:', error);
+      showToast('Extraction failed. Please check the input format and try again.', 'error');
+    } finally {
+      setIsProcessing(false);
     }
-
-    const turns = parseTurns(raw);
-    const outputText = buildOutput(turns, options, outputFormat, selectedModel, recentTurnsCount);
-    const topics = extractTopics(turns);
-
-    const ratio = ((1 - outputText.length / raw.length) * 100).toFixed(0);
-
-    setOutput(outputText);
-    setStats({
-      originalChars: raw.length,
-      compressedChars: outputText.length,
-      compressionRatio: ratio > '0' ? `${ratio}% smaller` : `${Math.abs(parseFloat(ratio))}% larger`,
-      turns: turns.length,
-      topics: topics.length,
-    });
-    setShowOutput(true);
-    setIsProcessing(false);
-
-    setTimeout(() => {
-      document.getElementById('output-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
-  }, [chatInput, options, outputFormat, selectedModel, recentTurnsCount]);
+  }, [chatInput, options, outputFormat, selectedModel, recentTurnsCount, showToast]);
 
   // Copy output
   const handleCopy = useCallback(async () => {
@@ -618,7 +638,7 @@ export default function App() {
         {/* Process button */}
         <div className="flex justify-center mb-6">
           <BtnPrimary onClick={handleProcess} disabled={isProcessing}>
-            <PlayIcon />
+            {isProcessing ? <span className="spinner" aria-hidden="true" /> : <PlayIcon />}
             <span className="text-base">{isProcessing ? 'Processing...' : 'Extract & Compress'}</span>
           </BtnPrimary>
         </div>
@@ -682,16 +702,16 @@ export default function App() {
 
               {/* Output content */}
               <div
-                className="p-5 min-h-[120px]"
+                className="p-5 min-h-[120px] max-h-[440px] overflow-y-auto"
                 style={{ background: 'var(--color-surface-2)' }}
               >
                 <pre
                   ref={outputRef}
-                  className="whitespace-pre-wrap break-words max-h-[400px] overflow-y-auto"
+                  className="whitespace-pre-wrap break-words output-text"
                   style={{
                     fontFamily: "'JetBrains Mono', monospace",
                     fontSize: 'clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem)',
-                    lineHeight: 1.7,
+                    lineHeight: 1.8,
                     color: 'var(--color-text)',
                   }}
                 >
@@ -758,6 +778,20 @@ export default function App() {
         }
         .animate-fade-in {
           animation: fade-in 0.3s ease-out forwards;
+        }
+        .spinner {
+          width: 14px;
+          height: 14px;
+          border-radius: 9999px;
+          border: 2px solid color-mix(in oklab, white 60%, transparent);
+          border-top-color: #fff;
+          animation: spin 0.8s linear infinite;
+        }
+        .output-text {
+          letter-spacing: 0.01em;
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>
